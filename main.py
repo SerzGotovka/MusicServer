@@ -1,9 +1,10 @@
 import sqlite3
 import pandas as pd
 from typing import Dict
+import os
 
 
-def load_data_from_db(db_path: str) -> Dict:
+def load_data_from_db(db_path: str, directory="data") -> Dict:
     """Загружает данные из базы данных SQLite и сохраняет их в словаре DataFrame."""
     dataframes = {}
     try:
@@ -11,6 +12,14 @@ def load_data_from_db(db_path: str) -> Dict:
             tables_query = "SELECT name FROM sqlite_master WHERE type='table';"
             name_tables = pd.read_sql(tables_query, conn)
             names_list = name_tables["name"].tolist()
+
+            """Проверка на наличие папки для хранения файлов,
+            если папка отсутствует, то создается автоматически"""
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+                print(f"Создана папка {directory}")
+            else:
+                print(f"Папка {directory} уже есть!")
 
             for name in names_list:
                 df = pd.read_sql(f"SELECT * FROM {name}", conn)
@@ -50,6 +59,24 @@ def top_genres_by_sales(dataframes: Dict) -> pd.DataFrame:
     except Exception as e:
         print(f"Ошибка при вычислении топ-5 жанров: {e}")
         return pd.DataFrame()
+
+
+def merged_tracks_albums_artists(dataframes: Dict) -> pd.DataFrame:
+    tracks_df = dataframes["tracks"]
+    albums_df = dataframes["albums"]
+    artists_df = dataframes["artists"]
+
+    merge_artists_albums = pd.merge(albums_df, artists_df, on="ArtistId", how="inner")
+
+    merge_tracks = pd.merge(merge_artists_albums, tracks_df, on="AlbumId", how="inner")
+
+    merge_tracks.rename(
+        columns={"Name_x": "NameArtist", "Name_y": "NameTrack", "Title": "NameAlbums"},
+        index=None,
+        inplace=True,
+    )
+
+    return merge_tracks[["NameAlbums", "NameArtist", "NameTrack"]]
 
 
 def top_customers_in_rock(dataframes: Dict) -> pd.DataFrame:
@@ -96,10 +123,12 @@ def main():
         "Average Track Duration": average_track_duration(dataframes),
         "Top Genres by Sales": top_genres_by_sales(dataframes),
         "Top Customers in Rock": top_customers_in_rock(dataframes),
+        "List tracks & almums & artists": merged_tracks_albums_artists(dataframes),
     }
 
     # Сохраняем отчет в Excel файл
     save_report_to_excel(report_data, "report.xlsx")
+    print("Программа завершена успешно!")
 
 
 if __name__ == "__main__":
